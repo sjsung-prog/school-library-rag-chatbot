@@ -8,3 +8,4 @@ langchain-upstage
 
 chromadb
 requests
+gdown
