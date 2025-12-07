@@ -17,8 +17,9 @@ if "UPSTAGE_API_KEY" in st.secrets:
 
 
 # ✅ Google Drive 에서 chroma_db.zip 내려받아서 풀기
+def download_and_unpack_chroma_db():
 # ⚠️ 여기에 네 Google Drive 파일 ID 넣기!
-    file_id = "여기에_네_파일ID"
+    file_id = "1XXyTjn8-yxa795E3k4stplJfNdFDyro2"
     url = f"https://drive.google.com/uc?id={file_id}"
 
     # 이미 폴더가 있고 안에 파일이 있으면 재다운로드 안 함
