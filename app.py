@@ -1,4 +1,7 @@
 import os
+import requests
+import zipfile
+
 import streamlit as st
 
 from langchain_upstage import ChatUpstage, UpstageEmbeddings
@@ -13,14 +16,41 @@ if "UPSTAGE_API_KEY" in st.secrets:
     os.environ["UPSTAGE_API_KEY"] = st.secrets["UPSTAGE_API_KEY"]
 
 
+# ✅ Google Drive 에서 chroma_db.zip 내려받아서 풀기
+def download_and_unpack_chroma_db():
+    # ⚠️ 여기에 네 Google Drive 파일 ID 넣기!
+    file_id = "1XXyTjn8-yxa795E3k4stplJfNdFDyro2"
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+
+    # 이미 chroma_db 폴더가 있고, 안에 뭔가 들어 있으면 다시 안 받음
+    if os.path.exists("chroma_db") and os.listdir("chroma_db"):
+        print("✅ chroma_db 폴더 이미 존재 → 다운로드 생략")
+        return
+
+    st.write("⬇ Google Drive에서 벡터 DB(chroma_db.zip)를 불러오는 중입니다...")
+    response = requests.get(download_url)
+    response.raise_for_status()
+
+    zip_path = "chroma_db.zip"
+    with open(zip_path, "wb") as f:
+        f.write(response.content)
+
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(".")
+
+    print("✅ chroma_db 준비 완료!")
+
+
 @st.cache_resource
 def load_rag_chain():
-    """Chroma 벡터DB + Upstage LLM을 이용한 RAG 체인 로드"""
+    """Google Drive에서 chroma_db를 내려받고, Chroma + Upstage LLM으로 RAG 체인 구성"""
 
-    # 1) 임베딩 + 벡터스토어 로드
+    # 1) chroma_db 없으면 Google Drive에서 받아오기
+    download_and_unpack_chroma_db()
+
+    # 2) 임베딩 + 벡터스토어 로드
     embeddings = UpstageEmbeddings(model="solar-embedding-1-large")
 
-    # chroma_db 폴더는 GitHub 저장소에 같이 올라와 있어야 함
     vectorstore = Chroma(
         embedding_function=embeddings,
         persist_directory="chroma_db"
@@ -28,12 +58,9 @@ def load_rag_chain():
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-    # 2) 프롬프트: 학교도서관 독서지원 사서 역할
+    # 3) 프롬프트: 학교도서관 독서지원 사서 역할
     prompt = ChatPromptTemplate.from_template(
         """
-# RAG용 프롬프트 템플릿
-prompt = ChatPromptTemplate.from_template(
-    """
 너는 학교도서관에서 학생들의 독서활동을 도와주는 도우미야.
 아래 '참고 문서(context)' 내용을 바탕으로, 학생의 질문에 대해
 친절하고 구체적인 답변을 한국어로 작성해줘.
@@ -48,36 +75,15 @@ prompt = ChatPromptTemplate.from_template(
 [참고 문서]
 {context}
 
-[질문]
-{question}
-"""
-)
-
-# Upstage LLM (기본 Solar 챗 모델)
-llm = ChatUpstage()
-
-# RAG 체인 구성
-rag_chain = (
-    {
-        "context": retriever,          # 질문을 retriever에 넣으면 관련 문서 반환
-        "question": RunnablePassthrough()
-    }
-    | prompt
-    | llm
-    | StrOutputParser()
-)
-
-
-[참고 문서]
-{context}
-
 [학생의 질문]
 {question}
         """
     )
 
-    llm = ChatUpstage()
+    # 4) Upstage LLM
+    llm = ChatUpstage()  # 기본 solar-1-mini 사용 (secrets의 키 필요)
 
+    # 5) RAG 체인
     rag_chain = (
         {
             "context": retriever,
@@ -109,11 +115,12 @@ with st.sidebar:
         """
 **예시 질문**
 
-- 독서모임 진행 방법에 대해 알려줘.
-- 독후감 작성 팁 있을까?
+- 독서모임 진행 방법이 궁금해.
+- 독후감 작성 팁 알려줄 수 있어?
 - 독서토론 기법의 종류에 대해 설명해줘.
+- 중학생이 읽기 좋은 글쓰기 관련 책 추천해줘.
 
-답변은 미리 인덱싱해 둔 도서관 자료와 독서교육 자료를 우선적으로 활용해서 생성됩니다.
+답변은 미리 인덱싱해 둔 도서관 소장자료와 독서교육 자료를 우선적으로 활용해서 생성됩니다.
         """
     )
 
