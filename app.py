@@ -1,6 +1,6 @@
 import os
-import requests
 import zipfile
+import gdown
 
 import streamlit as st
 
@@ -17,28 +17,40 @@ if "UPSTAGE_API_KEY" in st.secrets:
 
 
 # ✅ Google Drive 에서 chroma_db.zip 내려받아서 풀기
-def download_and_unpack_chroma_db():
-    # ⚠️ 여기에 네 Google Drive 파일 ID 넣기!
-    file_id = "1XXyTjn8-yxa795E3k4stplJfNdFDyro2"
-    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+# ⚠️ 여기에 네 Google Drive 파일 ID 넣기!
+    file_id = "여기에_네_파일ID"
+    url = f"https://drive.google.com/uc?id={file_id}"
 
-    # 이미 chroma_db 폴더가 있고, 안에 뭔가 들어 있으면 다시 안 받음
+    # 이미 폴더가 있고 안에 파일이 있으면 재다운로드 안 함
     if os.path.exists("chroma_db") and os.listdir("chroma_db"):
         print("✅ chroma_db 폴더 이미 존재 → 다운로드 생략")
         return
 
+    # 혹시 이전에 깨진 zip이 남아 있을 수도 있으니 삭제
+    if os.path.exists("chroma_db.zip"):
+        os.remove("chroma_db.zip")
+
     st.write("⬇ Google Drive에서 벡터 DB(chroma_db.zip)를 불러오는 중입니다...")
-    response = requests.get(download_url)
-    response.raise_for_status()
 
-    zip_path = "chroma_db.zip"
-    with open(zip_path, "wb") as f:
-        f.write(response.content)
+    # 🔽 gdown이 구글 드라이브의 각종 확인/토큰 처리를 알아서 해줌
+    gdown.download(url, "chroma_db.zip", quiet=False)
 
-    with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(".")
+    # 다운이 너무 작으면 (HTML 페이지만 받아온 경우 대비)
+    size = os.path.getsize("chroma_db.zip")
+    if size < 1000:  # 1KB도 안 된다? → 거의 HTML 에러 페이지
+        st.error("❌ chroma_db.zip 파일 크기가 비정상적으로 작습니다. "
+                 "구글 드라이브 공유 설정(링크가 있는 모든 사용자 보기)을 다시 확인해 주세요.")
+        return
 
-    print("✅ chroma_db 준비 완료!")
+    try:
+        with zipfile.ZipFile("chroma_db.zip", "r") as zip_ref:
+            zip_ref.extractall(".")
+    except zipfile.BadZipFile:
+        st.error("❌ ZIP 파일을 열 수 없습니다. 구글 드라이브에 올라간 파일이 "
+                 "정상적인 chroma_db.zip인지 다시 확인해 주세요.")
+        return
+
+    st.success("✅ chroma_db 준비 완료!")
 
 
 @st.cache_resource
